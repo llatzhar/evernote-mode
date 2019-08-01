@@ -1,4 +1,4 @@
-#! /usr/bin/ruby1.9.1 -sWKu
+#! /home/yamamoto/.rbenv/versions/1.9.3-p551/bin/ruby -sWKu
 # -*- coding: utf-8 -*-
 
 #
@@ -114,13 +114,17 @@ module EnClient
                 raise IllegalStateException.new("illegal field value of boolean #{varval_str}")
               end
             when :field_type_string
-              varval_str
+              #varval_str
+              varval_str.force_encoding('UTF-8')
             when :field_type_string_array
-              varval_str.split "|"
+              #varval_str.split "|"
+              varval_str.force_encoding('UTF-8').split "|"
             when :field_type_base64
-              Formatter.decode_base64 varval_str
+              #Formatter.decode_base64 varval_str
+              Formatter.decode_base64(varval_str).force_encoding('UTF-8')
             when :field_type_base64_array
-              Formatter.decode_base64_list varval_str.split("|")
+              #Formatter.decode_base64_list varval_str.split("|")
+              Formatter.decode_base64_list varval_str.force_encoding('UTF-8').split("|")
             when :field_type_object
               if varsym == :attributes
                 a = Evernote::EDAM::Type::NoteAttributes.new
@@ -494,6 +498,7 @@ module EnClient
     attr_accessor :user, :passwd, :auth_token
 
     def exec_impl
+
       Formatter.to_ascii @user, @passwd, @auth_token
 
       server_task do
@@ -545,7 +550,7 @@ module EnClient
     include FormatNoteOperation
 
     def exec_impl
-      Formatter.to_ascii @title, @content, *@tag_names
+      #Formatter.to_ascii @title, @content, *@tag_names
 
       note = Evernote::EDAM::Type::Note.new
       note.title = @title
@@ -584,7 +589,8 @@ module EnClient
     include FormatNoteOperation
 
     def exec_impl
-      Formatter.to_ascii @title, @notebook_guid, @content, *@tag_names
+      #Formatter.to_ascii @title, @notebook_guid, @content, *@tag_names
+      Formatter.to_ascii @notebook_guid
 
       old_note = DBUtils.get_note dm, @guid
 
@@ -648,7 +654,7 @@ module EnClient
     attr_accessor :name, :default_notebook
 
     def exec_impl
-      Formatter.to_ascii @name
+      #Formatter.to_ascii @name
 
       notebook = Evernote::EDAM::Type::Notebook.new
       notebook.name = @name
@@ -669,7 +675,7 @@ module EnClient
     attr_accessor :guid, :name, :default_notebook
 
     def exec_impl
-      Formatter.to_ascii @name
+      #Formatter.to_ascii @name
 
       notebook = Evernote::EDAM::Type::Notebook.new
       notebook.guid = @guid
@@ -692,7 +698,7 @@ module EnClient
     attr_accessor :name, :parent_guid
 
     def exec_impl
-      Formatter.to_ascii @name
+      #Formatter.to_ascii @name
 
       tag = Evernote::EDAM::Type::Tag.new
       tag.name = @name
@@ -713,7 +719,7 @@ module EnClient
     attr_accessor :guid, :name, :parent_guid
 
     def exec_impl
-      Formatter.to_ascii @name
+      #Formatter.to_ascii @name
 
       tag = Evernote::EDAM::Type::Tag.new
       tag.guid = @guid
@@ -735,7 +741,7 @@ module EnClient
     attr_accessor :name, :query
 
     def exec_impl
-      Formatter.to_ascii @name
+      #Formatter.to_ascii @name
 
       search = Evernote::EDAM::Type::SavedSearch.new
       search.name = @name
@@ -756,7 +762,7 @@ module EnClient
     attr_accessor :guid, :name, :query
 
     def exec_impl
-      Formatter.to_ascii @name, @query
+      #Formatter.to_ascii @name, @query
 
       search = Evernote::EDAM::Type::SavedSearch.new
       search.guid = @guid
@@ -778,7 +784,7 @@ module EnClient
     attr_accessor :query
 
     def exec_impl
-      Formatter.to_ascii @query
+      #Formatter.to_ascii @query
 
       filter = Evernote::EDAM::NoteStore::NoteFilter.new
       filter.order = Evernote::EDAM::Type::NoteSortOrder::UPDATED
