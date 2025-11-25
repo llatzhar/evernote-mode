@@ -1951,7 +1951,10 @@
             (accept-process-output proc)
             (setq reply (enutil-get-first-sexp-in-buffer)))
         (error
-         (error "Error while waiting for enclient.rb response: %s\nCommand: %s" err command))))
+         (let ((buffer-content (with-current-buffer buffer
+                                 (buffer-substring (point-min) (point-max)))))
+           (error "Error while waiting for enclient.rb response: %s\nCommand: %s\nBuffer content: %s" 
+                  err command buffer-content)))))
     (message "")
     (if (eq (enutil-aget 'class reply) 'ErrorReply)
         (progn
@@ -2420,14 +2423,9 @@
 
 
 (defun enutil-get-first-sexp-in-buffer ()
-  (let ((content (buffer-substring (point-min) (point-max))))
-    (condition-case err
-        (car (read-from-string content))
-      (error 
-       (message "enclient.rb output buffer content: %s" content)
-       (signal 'enclient-parse-error 
-               (list (format "Failed to parse enclient.rb output. See *Messages* buffer for content. Parse error: %s" 
-                            (error-message-string err))))))))
+  (let* ((content (buffer-substring (point-min) (point-max)))
+         (result (read-from-string content)))
+    (car result)))
 
 
 (defun enutil-hash-mapcar (func hash)
