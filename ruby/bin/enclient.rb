@@ -828,7 +828,6 @@ module EnClient
     private
 
     def format_content(content, edit_mode)
-      result = nil
       content.gsub! %r{(?:\r\n)|\n|\r}, "\n"
       if edit_mode == "TEXT"
         content =~ %r|<en-note[^>]*>(.*)</en-note>|m
