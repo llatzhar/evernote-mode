@@ -2424,8 +2424,10 @@
     (condition-case err
         (car (read-from-string content))
       (error 
-       (error "Failed to parse enclient.rb output as S-expression.\nBuffer content: %s\nParse error: %s" 
-              content (error-message-string err))))))
+       (message "enclient.rb output buffer content: %s" content)
+       (signal 'enclient-parse-error 
+               (list (format "Failed to parse enclient.rb output. See *Messages* buffer for content. Parse error: %s" 
+                            (error-message-string err))))))))
 
 
 (defun enutil-hash-mapcar (func hash)
