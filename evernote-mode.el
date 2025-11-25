@@ -1978,7 +1978,7 @@
               (not (eq (process-status proc) 'run)))
       (setq proc (start-process enh-command-process-name
                                 enh-command-output-buffer-name
-                                evernote-ruby-command "-S" 
+                                evernote-ruby-command "-W0" "-S" 
                                 (expand-file-name enh-enclient-command)))
       (set-process-sentinel proc 'enh-command-sentinel)
       (set-process-coding-system proc 'utf-8 'utf-8)
