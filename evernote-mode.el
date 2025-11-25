@@ -2423,9 +2423,16 @@
 
 
 (defun enutil-get-first-sexp-in-buffer ()
-  (let* ((content (buffer-substring (point-min) (point-max)))
-         (result (read-from-string content)))
-    (car result)))
+  (let ((content (buffer-substring (point-min) (point-max))))
+    ;; Skip Ruby warning messages and find the first S-expression
+    (when (string-match "^\\(?:.*warning:.*\n\\)*\\s-*(" content)
+      (setq content (substring content (match-beginning 0))))
+    (condition-case err
+        (let ((result (read-from-string content)))
+          (car result))
+      (error
+       ;; If we still can't parse, return nil so the loop continues waiting
+       nil))))
 
 
 (defun enutil-hash-mapcar (func hash)
