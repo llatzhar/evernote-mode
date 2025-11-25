@@ -834,9 +834,9 @@ module EnClient
         content = $1
         content.gsub! %r{<br.*?/>}m, "\n"
         content.gsub! %r{&nbsp;}m, " "
-        result = CGI.unescapeHTML content
+        CGI.unescapeHTML content
       else
-        result = content
+        content
       end
     end
   end
