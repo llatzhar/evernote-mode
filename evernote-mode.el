@@ -236,9 +236,14 @@
   "Open an evernote browser"
   (interactive)
   (if (called-interactively-p) (enh-clear-onmem-cache))
+  (message "Starting evernote browser...")
   (enh-browsing-update-page-list)
+  (message "Page list updated, current page: %s" evernote-browsing-current-page)
   (if evernote-browsing-current-page
-      (enutil-move-cursor-to-window evernote-browsing-current-page)
+      (progn
+        (message "Switching to existing page")
+        (enutil-move-cursor-to-window evernote-browsing-current-page))
+    (message "Listing tags...")
     (evernote-browsing-list-tags)))
 
 
