@@ -1944,11 +1944,14 @@
                            (format "{%s, :command_id => %d}"
                                    command enh-command-next-command-id))
       (process-send-string proc "\x00\n")
-      (while (or (not reply)
-                 (enutil-neq (enutil-aget 'command_id reply)
-                             enh-command-next-command-id))
-        (accept-process-output proc)
-        (setq reply (enutil-get-first-sexp-in-buffer))))
+      (condition-case err
+          (while (or (not reply)
+                     (enutil-neq (enutil-aget 'command_id reply)
+                                 enh-command-next-command-id))
+            (accept-process-output proc)
+            (setq reply (enutil-get-first-sexp-in-buffer)))
+        (error
+         (error "Error while waiting for enclient.rb response: %s\nCommand: %s" err command))))
     (message "")
     (if (eq (enutil-aget 'class reply) 'ErrorReply)
         (progn
@@ -2417,12 +2420,13 @@
 
 
 (defun enutil-get-first-sexp-in-buffer ()
-  (condition-case nil
-      (car (read-from-string
-            (buffer-substring
-             (point-min)
-             (point-max))))
-    (error nil)))
+  (condition-case err
+      (let ((content (buffer-substring (point-min) (point-max))))
+        (car (read-from-string content)))
+    (error 
+     (let ((content (buffer-substring (point-min) (point-max))))
+       (error "Failed to parse enclient.rb output as S-expression.\nBuffer content: %s\nParse error: %s" 
+              content err)))))
 
 
 (defun enutil-hash-mapcar (func hash)
