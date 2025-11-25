@@ -389,7 +389,7 @@ module EnClient
         while @queue.size == 0
           @cond.wait(@mutex)
         end
-        task = @queue.shift
+        @queue.shift
       }
     end
   end
@@ -412,7 +412,7 @@ module EnClient
       hash.each do |key, value|
         next if key == :class
         setter_name = key.to_s + "="
-        meth = command.send setter_name, value
+        command.send setter_name, value
       end
 
       command
