@@ -2420,13 +2420,12 @@
 
 
 (defun enutil-get-first-sexp-in-buffer ()
-  (condition-case err
-      (let ((content (buffer-substring (point-min) (point-max))))
-        (car (read-from-string content)))
-    (error 
-     (let ((content (buffer-substring (point-min) (point-max))))
+  (let ((content (buffer-substring (point-min) (point-max))))
+    (condition-case err
+        (car (read-from-string content))
+      (error 
        (error "Failed to parse enclient.rb output as S-expression.\nBuffer content: %s\nParse error: %s" 
-              content err)))))
+              content (error-message-string err))))))
 
 
 (defun enutil-hash-mapcar (func hash)
