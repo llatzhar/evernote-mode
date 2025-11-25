@@ -2429,8 +2429,9 @@
 
 (defun enutil-get-first-sexp-in-buffer ()
   (let ((content (buffer-substring (point-min) (point-max))))
-    ;; Skip Ruby warning messages and find the first S-expression
-    (when (string-match "^\\(?:.*warning:.*\n\\)*\\s-*(" content)
+    ;; Skip all Ruby warning/error messages until we find an S-expression starting with (
+    ;; This handles warnings, stack traces, and other Ruby output
+    (when (string-match "(" content)
       (setq content (substring content (match-beginning 0))))
     (condition-case err
         (let ((result (read-from-string content)))
