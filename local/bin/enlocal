@@ -1,0 +1,416 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+
+require_relative '../lib/enlocal'
+require 'optparse'
+require 'time'
+
+module EnLocal
+  class CLI
+    def initialize(args)
+      @args = args
+      @cache_dir = nil
+      @options = {}
+      @command = nil
+      @command_args = []
+    end
+
+    def run
+      begin
+        parse_options!
+      rescue OptionParser::InvalidOption => e
+        # Extract the invalid option from error message
+        if e.message =~ /invalid option: (--\S+)/
+          invalid_opt = $1
+          puts "Error: Unknown option '#{invalid_opt}'"
+          puts
+          puts "Did you mean to use a command instead?"
+          puts "Commands don't use '--' prefix. For example:"
+          puts "  enlocal list-notebooks        (not --list-notebooks)"
+          puts "  enlocal list-tags              (not --list-tags)"
+          puts
+          puts "Run 'enlocal --help' for full usage."
+          exit 1
+        else
+          raise
+        end
+      end
+      
+      if @command.nil?
+        puts "Error: No command specified"
+        puts
+        show_help
+        exit 1
+      end
+
+      begin
+        execute_command
+      rescue CacheError => e
+        puts "Error: #{e.message}"
+        exit 1
+      rescue => e
+        puts "Error: #{e.message}"
+        puts e.backtrace if @options[:debug]
+        exit 1
+      end
+    end
+
+    private
+
+    def parse_options!
+      parser = OptionParser.new do |opts|
+        opts.banner = "Usage: enlocal [OPTIONS] COMMAND [args...]"
+        opts.separator ""
+        opts.separator "Global Options (before command):"
+        opts.separator "  --cache-dir DIR             Cache directory (default: ~/.evernote-mode)"
+        opts.separator "  --debug                     Show debug information"
+        opts.separator "  -h, --help                  Show this help"
+        opts.separator "  --version                   Show version"
+        opts.separator ""
+        opts.separator "Commands:"
+        opts.separator "  list-notebooks              List all notebooks"
+        opts.separator "  list-tags [--tree]          List all tags"
+        opts.separator "  list-searches               List saved searches"
+        opts.separator "  list-notes [OPTIONS]        List notes"
+        opts.separator "  show-note GUID [OPTIONS]    Show note details"
+        opts.separator "  search QUERY                Search notes by title"
+        opts.separator "  stats                       Show cache statistics"
+        opts.separator ""
+        opts.separator "Command Options (after command):"
+
+        opts.on("--cache-dir DIR", "Cache directory (default: ~/.evernote-mode)") do |dir|
+          @cache_dir = File.expand_path(dir)
+        end
+
+        opts.on("--notebook GUID", "Filter by notebook GUID") do |guid|
+          @options[:notebook_guid] = guid
+        end
+
+        opts.on("--tag GUID", "Filter by tag GUID (can specify multiple)") do |guid|
+          @options[:tag_guids] ||= []
+          @options[:tag_guids] << guid
+        end
+
+        opts.on("--format FORMAT", "Output format: text, enml (default: text)") do |fmt|
+          @options[:format] = fmt.downcase
+        end
+
+        opts.on("--tree", "Display tags in tree format") do
+          @options[:tree] = true
+        end
+
+        opts.on("--limit N", Integer, "Limit number of results") do |n|
+          @options[:limit] = n
+        end
+
+        opts.on("--debug", "Show debug information") do
+          @options[:debug] = true
+        end
+
+        opts.on("-h", "--help", "Show this help") do
+          puts opts
+          exit 0
+        end
+
+        opts.on("--version", "Show version") do
+          puts "enlocal version #{VERSION}"
+          exit 0
+        end
+      end
+
+      parser.parse!(@args)
+      @command = @args.shift
+      @command_args = @args
+      
+      # Better error message if no command specified
+      if @command.nil? || @command.start_with?('--')
+        if @command&.start_with?('--')
+          puts "Error: '#{@command}' looks like an option, not a command."
+          puts "Options must come BEFORE the command."
+          puts ""
+          puts "Correct usage:"
+          puts "  enlocal --cache-dir DIR COMMAND"
+          puts ""
+          puts "Example:"
+          puts "  enlocal --cache-dir c:\\gits\\.evernote-mode list-notebooks"
+        end
+        @command = nil
+      end
+    end
+
+    def execute_command
+      reader = CacheReader.new(@cache_dir)
+
+      case @command
+      when 'list-notebooks'
+        list_notebooks(reader)
+      when 'list-tags'
+        list_tags(reader)
+      when 'list-searches'
+        list_searches(reader)
+      when 'list-notes'
+        list_notes(reader)
+      when 'show-note'
+        show_note(reader)
+      when 'search'
+        search_notes(reader)
+      when 'stats'
+        show_stats(reader)
+      else
+        puts "Error: Unknown command: #{@command}"
+        puts
+        show_help
+        exit 1
+      end
+    end
+
+    def list_notebooks(reader)
+      notebooks = reader.list_notebooks
+      
+      if notebooks.empty?
+        puts "No notebooks found."
+        return
+      end
+
+      puts "Notebooks (#{notebooks.size}):"
+      puts "-" * 80
+      
+      notebooks.each do |nb|
+        default_mark = nb.defaultNotebook ? " [DEFAULT]" : ""
+        updated = nb.serviceUpdated ? Time.at(nb.serviceUpdated / 1000).strftime("%Y-%m-%d %H:%M") : "N/A"
+        puts "#{nb.guid[0..7]}  #{nb.name}#{default_mark}"
+        puts "           Updated: #{updated}, USN: #{nb.updateSequenceNum}"
+        puts
+      end
+    end
+
+    def list_tags(reader)
+      if @options[:tree]
+        list_tags_tree(reader)
+      else
+        list_tags_flat(reader)
+      end
+    end
+
+    def list_tags_flat(reader)
+      tags = reader.list_tags
+      
+      if tags.empty?
+        puts "No tags found."
+        return
+      end
+
+      puts "Tags (#{tags.size}):"
+      puts "-" * 80
+      
+      tags.each do |tag|
+        parent_info = tag.parentGuid ? " (parent: #{tag.parentGuid[0..7]})" : ""
+        puts "#{tag.guid[0..7]}  #{tag.name}#{parent_info}"
+      end
+    end
+
+    def list_tags_tree(reader)
+      tree = reader.build_tag_tree
+      
+      if tree.empty?
+        puts "No tags found."
+        return
+      end
+
+      puts "Tags (tree view):"
+      puts "-" * 80
+      
+      tree.each do |node|
+        print_tag_tree_node(node, 0)
+      end
+    end
+
+    def print_tag_tree_node(node, level)
+      indent = "  " * level
+      tag = node[:tag]
+      puts "#{indent}#{tag.name} (#{tag.guid[0..7]})"
+      
+      node[:children].each do |child|
+        print_tag_tree_node(child, level + 1)
+      end
+    end
+
+    def list_searches(reader)
+      searches = reader.list_searches
+      
+      if searches.empty?
+        puts "No saved searches found."
+        return
+      end
+
+      puts "Saved Searches (#{searches.size}):"
+      puts "-" * 80
+      
+      searches.each do |search|
+        puts "#{search.guid[0..7]}  #{search.name}"
+        puts "           Query: #{search.query}"
+        puts
+      end
+    end
+
+    def list_notes(reader)
+      notes = reader.list_notes(
+        notebook_guid: @options[:notebook_guid],
+        tag_guids: @options[:tag_guids]
+      )
+      
+      if notes.empty?
+        puts "No notes found."
+        return
+      end
+
+      limit = @options[:limit] || notes.size
+      notes = notes.take(limit)
+
+      puts "Notes (showing #{notes.size}):"
+      puts "-" * 80
+      
+      notes.each do |note|
+        updated = note.updated ? Time.at(note.updated / 1000).strftime("%Y-%m-%d %H:%M") : "N/A"
+        tags = note.tagNames&.join(", ") || ""
+        
+        puts "#{note.guid[0..7]}  #{note.title}"
+        puts "           Updated: #{updated}"
+        puts "           Notebook: #{note.notebookGuid[0..7]}"
+        puts "           Tags: #{tags}" unless tags.empty?
+        puts "           Mode: #{note.editMode}" if note.editMode
+        puts
+      end
+    end
+
+    def show_note(reader)
+      if @command_args.empty?
+        puts "Error: Note GUID required"
+        exit 1
+      end
+
+      guid = @command_args[0]
+      format = @options[:format] || 'text'
+
+      note = reader.get_note(guid)
+      
+      puts "Note Details:"
+      puts "=" * 80
+      puts "GUID:     #{note.guid}"
+      puts "Title:    #{note.title}"
+      puts "Created:  #{note.created ? Time.at(note.created / 1000).to_s : 'N/A'}"
+      puts "Updated:  #{note.updated ? Time.at(note.updated / 1000).to_s : 'N/A'}"
+      puts "Notebook: #{note.notebookGuid}"
+      puts "Tags:     #{note.tagNames&.join(', ') || 'None'}"
+      puts "Mode:     #{note.editMode || 'N/A'}"
+      puts "USN:      #{note.updateSequenceNum}"
+      
+      if note.attributes
+        puts "\nAttributes:"
+        puts "  Source: #{note.attributes.source}" if note.attributes.source
+        puts "  Author: #{note.attributes.author}" if note.attributes.author
+      end
+      
+      puts "\nContent (#{format}):"
+      puts "-" * 80
+      
+      begin
+        if format == 'enml'
+          content = reader.get_note_content_enml(guid)
+        else
+          content = reader.get_note_content_text(guid)
+        end
+        puts content
+      rescue NotFoundError => e
+        puts "Content not available: #{e.message}"
+      end
+    end
+
+    def search_notes(reader)
+      if @command_args.empty?
+        puts "Error: Search query required"
+        exit 1
+      end
+
+      query = @command_args.join(" ")
+      notes = reader.search_notes_by_title(query)
+      
+      if notes.empty?
+        puts "No notes found matching: #{query}"
+        return
+      end
+
+      limit = @options[:limit] || notes.size
+      notes = notes.take(limit)
+
+      puts "Search Results (#{notes.size} matches for '#{query}'):"
+      puts "-" * 80
+      
+      notes.each do |note|
+        updated = note.updated ? Time.at(note.updated / 1000).strftime("%Y-%m-%d %H:%M") : "N/A"
+        puts "#{note.guid[0..7]}  #{note.title}"
+        puts "           Updated: #{updated}"
+        puts
+      end
+    end
+
+    def show_stats(reader)
+      stats = reader.get_stats
+      sync = stats[:sync_info]
+      
+      puts "Cache Statistics:"
+      puts "=" * 80
+      puts "Cache Directory: #{reader.db.sys_dir}"
+      puts "Locked:          #{reader.db.locked? ? 'Yes (sync in progress?)' : 'No'}"
+      puts
+      puts "Items:"
+      puts "  Notebooks:     #{stats[:notebooks]}"
+      puts "  Notes:         #{stats[:notes]}"
+      puts "  Tags:          #{stats[:tags]}"
+      puts "  Searches:      #{stats[:searches]}"
+      puts
+      puts "Sync Info:"
+      puts "  Last Sync:     #{sync[:last_sync] > 0 ? Time.at(sync[:last_sync] / 1000).to_s : 'Never'}"
+      puts "  USN:           #{sync[:usn]}"
+    end
+
+    def show_help
+      puts "Usage: enlocal [OPTIONS] COMMAND [args...]"
+      puts
+      puts "Global Options (must come BEFORE command):"
+      puts "  --cache-dir DIR             Cache directory (default: ~/.evernote-mode)"
+      puts "  --debug                     Show debug information"
+      puts "  -h, --help                  Show this help"
+      puts "  --version                   Show version"
+      puts
+      puts "Commands:"
+      puts "  list-notebooks              List all notebooks"
+      puts "  list-tags [--tree]          List all tags"
+      puts "  list-searches               List saved searches"
+      puts "  list-notes [OPTIONS]        List notes"
+      puts "  show-note GUID [OPTIONS]    Show note details"
+      puts "  search QUERY                Search notes by title"
+      puts "  stats                       Show cache statistics"
+      puts
+      puts "Command Options (come AFTER command):"
+      puts "  --notebook GUID             Filter by notebook"
+      puts "  --tag GUID                  Filter by tag"
+      puts "  --format FORMAT             Output format (text or enml)"
+      puts "  --tree                      Display tags in tree format"
+      puts "  --limit N                   Limit results"
+      puts
+      puts "Examples:"
+      puts "  enlocal list-notebooks"
+      puts "  enlocal --cache-dir C:\\gits\\.evernote-mode stats"
+      puts "  enlocal list-notes --notebook <GUID> --limit 10"
+      puts "  enlocal show-note <GUID> --format text"
+      puts
+      puts "Run 'enlocal --help' for more information."
+    end
+  end
+end
+
+# Run CLI
+if __FILE__ == $0
+  EnLocal::CLI.new(ARGV).run
+end
