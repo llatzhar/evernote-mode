@@ -397,6 +397,87 @@ end
    - シリアライズ/デシリアライズのテスト
    - 全テスト通過確認済み
 
+### ✅ エクスポート機能（実装完了）
+
+**Phase 2より先行実装**
+
+実装済みの機能：
+
+1. **ヒューマンリーダブル形式** (`NoteExporter`)
+   - YAML frontmatter + Markdown形式
+   - ENML/EDAM非依存
+   - Git管理可能
+   - 他ツール（Obsidian, Joplin等）と互換性
+
+2. **エクスポートオプション**
+   - ディレクトリ構造: `flat`, `notebook`, `date`, `tag`
+   - ファイル名形式: `guid`, `title`, `timestamp-title`, `guid-title`
+   - メタデータインデックス（JSON）生成
+
+3. **エクスポートコマンド**
+   - `export-note GUID` - 単一ノートエクスポート
+   - `export-notebook GUID` - ノートブック単位エクスポート
+   - `export-all` - 全ノートエクスポート
+
+4. **フォーマット詳細** (`EXPORT_FORMAT.md`)
+   - YAML frontmatter仕様
+   - ディレクトリ構造オプション
+   - 再インポート設計
+   - 他ツールとの連携方法
+
+### 使用例
+
+```bash
+# 単一ノートをエクスポート
+ruby bin/enlocal --cache-dir C:\gits\.evernote-mode \
+  export-note <GUID> --output note.md
+
+# 全ノートをノートブック別にエクスポート
+ruby bin/enlocal --cache-dir C:\gits\.evernote-mode \
+  export-all --output export \
+  --structure notebook \
+  --filename timestamp-title \
+  --index
+
+# エクスポート結果
+export/
+├── index.json
+├── ノートブック1/
+│   ├── 20250120_ノート1.md
+│   └── 20250121_ノート2.md
+└── ノートブック2/
+    └── 20250115_ノート3.md
+```
+
+### エクスポート形式の特徴
+
+```yaml
+---
+title: ノートタイトル
+guid: e3bdd511-6dac-4597-86d1-be46d0b006e9
+created: "2025-10-20T08:47:24+09:00"
+updated: "2025-10-20T08:47:49+09:00"
+notebook: "ノートブック名"
+notebook_guid: be2610e6-3f79-4be4-ab47-67df5ef56412
+tags:
+  - タグ1
+  - タグ2
+edit_mode: TEXT
+usn: 13576
+---
+
+# ノートタイトル
+
+ノートの本文...
+```
+
+**利点**:
+- 人間が読める・編集できる
+- Git等でバージョン管理可能
+- grep等で検索可能
+- Obsidian, Joplinなどで利用可能
+- 静的サイトジェネレータ（Jekyll, Hugo）対応
+
 ### ファイル構成
 
 ```
@@ -404,6 +485,7 @@ local/
 ├── README.md                 # プロジェクト概要
 ├── INSTALL.md                # インストール手順
 ├── USAGE.md                  # 使用例
+├── EXPORT_FORMAT.md          # エクスポート形式仕様
 ├── bin/
 │   └── enlocal              # CLIツール（実装完了）
 ├── lib/
@@ -424,6 +506,10 @@ ruby bin/enlocal --help
 
 # 開発キャッシュで統計表示（GDBM必要）
 ruby bin/enlocal --cache-dir C:\gits\.evernote-mode stats
+
+# エクスポートテスト
+ruby bin/enlocal --cache-dir C:\gits\.evernote-mode \
+  export-all --output test_export --structure notebook --index
 ```
 
 ### 次のステップ: Phase 2（未実装）

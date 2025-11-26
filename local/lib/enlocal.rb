@@ -546,4 +546,264 @@ module EnLocal
       end
     end
   end
+
+  # Note Exporter - export notes to human-readable format
+  class NoteExporter
+    require 'time'
+    require 'json'
+
+    attr_reader :reader
+
+    def initialize(cache_reader)
+      @reader = cache_reader
+    end
+
+    # Export a single note to Markdown with YAML frontmatter
+    def export_note_to_markdown(note, include_content: true)
+      output = "---\n"
+      output += build_frontmatter(note)
+      output += "---\n\n"
+      
+      if include_content
+        output += "# #{note.title}\n\n"
+        
+        begin
+          content = @reader.get_note_content_text(note.guid)
+          output += content
+        rescue NotFoundError
+          output += "_[Content not available]_\n"
+        end
+      end
+      
+      output
+    end
+
+    # Build YAML frontmatter from note metadata
+    def build_frontmatter(note)
+      data = {}
+      
+      # Required fields
+      data['title'] = note.title
+      data['guid'] = note.guid
+      data['created'] = format_timestamp(note.created)
+      data['updated'] = format_timestamp(note.updated)
+      
+      # Optional fields
+      if note.notebookGuid
+        notebook = @reader.get_notebook(note.notebookGuid) rescue nil
+        data['notebook'] = notebook&.name
+        data['notebook_guid'] = note.notebookGuid
+      end
+      
+      if note.tagNames && !note.tagNames.empty?
+        data['tags'] = note.tagNames
+      end
+      
+      if note.tagGuids && !note.tagGuids.empty?
+        data['tag_guids'] = note.tagGuids
+      end
+      
+      data['edit_mode'] = note.editMode if note.editMode
+      data['usn'] = note.updateSequenceNum if note.updateSequenceNum
+      
+      # Note attributes
+      if note.attributes
+        attr = note.attributes
+        data['source'] = attr.source if attr.source
+        data['author'] = attr.author if attr.author
+        data['source_url'] = attr.sourceURL if attr.sourceURL
+        data['latitude'] = attr.latitude if attr.latitude
+        data['longitude'] = attr.longitude if attr.longitude
+        
+        if attr.reminderTime && attr.reminderTime > 0
+          data['reminder_time'] = format_timestamp(attr.reminderTime)
+        end
+      end
+      
+      # Convert to YAML manually (simple implementation)
+      yaml_lines = []
+      data.each do |key, value|
+        yaml_lines << format_yaml_value(key, value)
+      end
+      
+      yaml_lines.join("\n") + "\n"
+    end
+
+    # Export all notes to directory
+    def export_all(output_dir, options = {})
+      structure = options[:structure] || 'flat'  # flat, notebook, date, tag
+      filename_format = options[:filename] || 'title'  # guid, title, timestamp-title, guid-title
+      create_index = options[:index] || false
+      
+      FileUtils.mkdir_p(output_dir)
+      
+      notes = @reader.list_notes
+      exported = []
+      
+      notes.each do |note|
+        begin
+          target_dir = determine_target_directory(output_dir, note, structure)
+          FileUtils.mkdir_p(target_dir)
+          
+          filename = generate_filename(note, filename_format)
+          filepath = File.join(target_dir, filename)
+          
+          markdown = export_note_to_markdown(note)
+          File.write(filepath, markdown, encoding: 'UTF-8')
+          
+          exported << {
+            guid: note.guid,
+            title: note.title,
+            file: filepath.sub(output_dir + '/', ''),
+            created: format_timestamp(note.created),
+            updated: format_timestamp(note.updated)
+          }
+        rescue => e
+          puts "Warning: Failed to export note #{note.guid}: #{e.message}"
+        end
+      end
+      
+      # Create index file if requested
+      if create_index
+        create_index_file(output_dir, exported)
+      end
+      
+      exported
+    end
+
+    # Export notes from a specific notebook
+    def export_notebook(notebook_guid, output_dir, options = {})
+      notes = @reader.list_notes(notebook_guid: notebook_guid)
+      notebook = @reader.get_notebook(notebook_guid)
+      
+      target_dir = File.join(output_dir, sanitize_filename(notebook.name))
+      FileUtils.mkdir_p(target_dir)
+      
+      notes.each do |note|
+        filename = generate_filename(note, options[:filename] || 'title')
+        filepath = File.join(target_dir, filename)
+        
+        markdown = export_note_to_markdown(note)
+        File.write(filepath, markdown, encoding: 'UTF-8')
+      end
+    end
+
+    private
+
+    def format_timestamp(ts)
+      return nil unless ts && ts > 0
+      Time.at(ts / 1000).iso8601
+    end
+
+    def format_yaml_value(key, value)
+      case value
+      when Array
+        if value.empty?
+          "#{key}: []"
+        else
+          lines = ["#{key}:"]
+          value.each { |v| lines << "  - #{yaml_escape(v)}" }
+          lines.join("\n")
+        end
+      when String
+        # Quote if contains special characters
+        if value.match?(/[:\[\]{}&*!|>'"@`#%]/) || value.match?(/^\s/) || value.match?(/\s$/)
+          "#{key}: \"#{value.gsub(/"/, '\"')}\""
+        else
+          "#{key}: #{value}"
+        end
+      when Numeric, TrueClass, FalseClass, NilClass
+        "#{key}: #{value}"
+      else
+        "#{key}: #{value}"
+      end
+    end
+
+    def yaml_escape(str)
+      if str.match?(/[:\[\]{}&*!|>'"@`#%]/) || str.match?(/^\s/) || str.match?(/\s$/)
+        "\"#{str.gsub(/"/, '\"')}\""
+      else
+        str
+      end
+    end
+
+    def determine_target_directory(base_dir, note, structure)
+      case structure
+      when 'notebook'
+        if note.notebookGuid
+          notebook = @reader.get_notebook(note.notebookGuid) rescue nil
+          notebook_name = notebook&.name || 'Unknown'
+          File.join(base_dir, sanitize_filename(notebook_name))
+        else
+          base_dir
+        end
+      when 'date'
+        if note.created && note.created > 0
+          time = Time.at(note.created / 1000)
+          File.join(base_dir, time.strftime('%Y'), time.strftime('%m'))
+        else
+          base_dir
+        end
+      when 'tag'
+        if note.tagNames && !note.tagNames.empty?
+          File.join(base_dir, sanitize_filename(note.tagNames.first))
+        else
+          File.join(base_dir, 'Untagged')
+        end
+      else  # flat
+        base_dir
+      end
+    end
+
+    def generate_filename(note, format)
+      case format
+      when 'guid'
+        "#{note.guid[0..7]}.md"
+      when 'timestamp-title'
+        if note.created && note.created > 0
+          time = Time.at(note.created / 1000)
+          timestamp = time.strftime('%Y%m%d')
+          "#{timestamp}_#{sanitize_filename(note.title || 'Untitled')}.md"
+        else
+          "#{sanitize_filename(note.title || 'Untitled')}.md"
+        end
+      when 'guid-title'
+        "#{note.guid[0..7]}_#{sanitize_filename(note.title || 'Untitled')}.md"
+      else  # title
+        "#{sanitize_filename(note.title || 'Untitled')}.md"
+      end
+    end
+
+    def sanitize_filename(name)
+      # Remove or replace invalid filename characters
+      sanitized = name.gsub(/[\/\\:*?"<>|]/, '_')
+      # Limit length
+      sanitized = sanitized[0..100] if sanitized.length > 100
+      # Remove leading/trailing spaces and dots
+      sanitized.strip.gsub(/^\.+/, '').gsub(/\.+$/, '')
+    end
+
+    def create_index_file(output_dir, exported_notes)
+      notebooks = {}
+      @reader.list_notebooks.each do |nb|
+        notebooks[nb.guid] = nb.name
+      end
+      
+      tags = {}
+      @reader.list_tags.each do |tag|
+        tags[tag.guid] = tag.name
+      end
+      
+      index = {
+        export_date: Time.now.iso8601,
+        total_notes: exported_notes.size,
+        notebooks: notebooks,
+        tags: tags,
+        notes: exported_notes
+      }
+      
+      index_path = File.join(output_dir, 'index.json')
+      File.write(index_path, JSON.pretty_generate(index), encoding: 'UTF-8')
+    end
+  end
 end

@@ -74,6 +74,9 @@ module EnLocal
         opts.separator "  list-notes [OPTIONS]        List notes"
         opts.separator "  show-note GUID [OPTIONS]    Show note details"
         opts.separator "  search QUERY                Search notes by title"
+        opts.separator "  export-note GUID [OPTIONS]  Export a note to Markdown"
+        opts.separator "  export-notebook GUID [OPTS] Export notebook notes to directory"
+        opts.separator "  export-all [OPTIONS]        Export all notes to directory"
         opts.separator "  stats                       Show cache statistics"
         opts.separator ""
         opts.separator "Command Options (after command):"
@@ -101,6 +104,26 @@ module EnLocal
 
         opts.on("--limit N", Integer, "Limit number of results") do |n|
           @options[:limit] = n
+        end
+
+        opts.on("--output FILE/DIR", "Output file or directory for export") do |path|
+          @options[:output] = path
+        end
+
+        opts.on("--structure TYPE", "Directory structure: flat, notebook, date, tag") do |type|
+          @options[:structure] = type
+        end
+
+        opts.on("--filename FORMAT", "Filename format: guid, title, timestamp-title, guid-title") do |fmt|
+          @options[:filename] = fmt
+        end
+
+        opts.on("--index", "Create index.json file") do
+          @options[:index] = true
+        end
+
+        opts.on("--no-content", "Export metadata only (no note content)") do
+          @options[:no_content] = true
         end
 
         opts.on("--debug", "Show debug information") do
@@ -154,6 +177,12 @@ module EnLocal
         show_note(reader)
       when 'search'
         search_notes(reader)
+      when 'export-note'
+        export_note(reader)
+      when 'export-notebook'
+        export_notebook(reader)
+      when 'export-all'
+        export_all(reader)
       when 'stats'
         show_stats(reader)
       else
@@ -354,6 +383,83 @@ module EnLocal
       end
     end
 
+    def export_note(reader)
+      if @command_args.empty?
+        puts "Error: Note GUID required"
+        exit 1
+      end
+
+      guid = @command_args[0]
+      output = @options[:output]
+      
+      unless output
+        puts "Error: --output FILE required"
+        exit 1
+      end
+
+      exporter = EnLocal::NoteExporter.new(reader)
+      note = reader.get_note(guid)
+      
+      markdown = exporter.export_note_to_markdown(note, include_content: !@options[:no_content])
+      File.write(output, markdown, encoding: 'UTF-8')
+      
+      puts "Exported note to: #{output}"
+      puts "  Title: #{note.title}"
+      puts "  Size: #{File.size(output)} bytes"
+    end
+
+    def export_notebook(reader)
+      if @command_args.empty?
+        puts "Error: Notebook GUID required"
+        exit 1
+      end
+
+      guid = @command_args[0]
+      output_dir = @options[:output] || 'export'
+      
+      exporter = EnLocal::NoteExporter.new(reader)
+      notebook = reader.get_notebook(guid)
+      
+      puts "Exporting notebook: #{notebook.name}"
+      
+      exporter.export_notebook(
+        guid, 
+        output_dir,
+        filename: @options[:filename]
+      )
+      
+      notes_count = reader.list_notes(notebook_guid: guid).size
+      puts "Exported #{notes_count} notes to: #{output_dir}"
+    end
+
+    def export_all(reader)
+      output_dir = @options[:output] || 'export'
+      structure = @options[:structure] || 'flat'
+      filename_format = @options[:filename] || 'title'
+      create_index = @options[:index] || false
+      
+      puts "Exporting all notes..."
+      puts "  Output directory: #{output_dir}"
+      puts "  Structure: #{structure}"
+      puts "  Filename format: #{filename_format}"
+      puts "  Index: #{create_index ? 'Yes' : 'No'}"
+      puts
+      
+      exporter = EnLocal::NoteExporter.new(reader)
+      
+      exported = exporter.export_all(output_dir, {
+        structure: structure,
+        filename: filename_format,
+        index: create_index
+      })
+      
+      puts
+      puts "Export completed!"
+      puts "  Total notes: #{exported.size}"
+      puts "  Output directory: #{output_dir}"
+      puts "  Index file: #{File.join(output_dir, 'index.json')}" if create_index
+    end
+
     def show_stats(reader)
       stats = reader.get_stats
       sync = stats[:sync_info]
@@ -390,6 +496,9 @@ module EnLocal
       puts "  list-notes [OPTIONS]        List notes"
       puts "  show-note GUID [OPTIONS]    Show note details"
       puts "  search QUERY                Search notes by title"
+      puts "  export-note GUID [OPTIONS]  Export a note to Markdown"
+      puts "  export-notebook GUID [OPTS] Export notebook notes to directory"
+      puts "  export-all [OPTIONS]        Export all notes to directory"
       puts "  stats                       Show cache statistics"
       puts
       puts "Command Options (come AFTER command):"
@@ -398,12 +507,19 @@ module EnLocal
       puts "  --format FORMAT             Output format (text or enml)"
       puts "  --tree                      Display tags in tree format"
       puts "  --limit N                   Limit results"
+      puts "  --output FILE/DIR           Output file or directory for export"
+      puts "  --structure TYPE            Directory structure (flat, notebook, date, tag)"
+      puts "  --filename FORMAT           Filename format (guid, title, timestamp-title, guid-title)"
+      puts "  --index                     Create index.json file"
+      puts "  --no-content                Export metadata only"
       puts
       puts "Examples:"
       puts "  enlocal list-notebooks"
       puts "  enlocal --cache-dir C:\\gits\\.evernote-mode stats"
       puts "  enlocal list-notes --notebook <GUID> --limit 10"
       puts "  enlocal show-note <GUID> --format text"
+      puts "  enlocal export-note <GUID> --output note.md"
+      puts "  enlocal export-all --output export --structure notebook --index"
       puts
       puts "Run 'enlocal --help' for more information."
     end
