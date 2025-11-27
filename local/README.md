@@ -486,8 +486,10 @@ local/
 ├── INSTALL.md                # インストール手順
 ├── USAGE.md                  # 使用例
 ├── EXPORT_FORMAT.md          # エクスポート形式仕様
+├── PREFETCH.md               # コンテンツキャッシュ作成ガイド
 ├── bin/
-│   └── enlocal              # CLIツール（実装完了）
+│   ├── enlocal              # CLIツール（ローカル操作）
+│   └── enprefetch.rb        # コンテンツ取得ツール（サービス接続）
 ├── lib/
 │   └── enlocal.rb           # コアライブラリ（実装完了）
 └── test/
@@ -507,10 +509,52 @@ ruby bin/enlocal --help
 # 開発キャッシュで統計表示（GDBM必要）
 ruby bin/enlocal --cache-dir C:\gits\.evernote-mode stats
 
+# コンテンツキャッシュ分析
+ruby bin/enprefetch.rb --cache-dir C:\gits\.evernote-mode analyze
+
 # エクスポートテスト
 ruby bin/enlocal --cache-dir C:\gits\.evernote-mode \
   export-all --output test_export --structure notebook --index
 ```
+
+## 実装状況
+
+### Phase 1: 基本読み取り機能（完了✅）
+
+すべての機能が実装され、テスト済みです：
+
+- ✅ ノート一覧
+- ✅ ノートブック一覧
+- ✅ タグ一覧（階層構造対応）
+- ✅ 保存された検索一覧
+- ✅ 個別ノート表示（テキスト/ENML形式）
+- ✅ タイトル検索
+- ✅ 統計情報
+
+### Prefetch機能（完了✅）
+
+サービスからコンテンツを取得してキャッシュを完全化：
+
+- ✅ キャッシュ分析（欠落ノート特定）
+- ✅ 全ノート一括取得
+- ✅ 個別ノート取得
+- ✅ キャッシュ検証
+- ✅ ドライラン・制限オプション
+- ✅ レート制限対応
+
+詳細: [PREFETCH.md](PREFETCH.md)
+
+### Export機能（完了✅）
+
+人間が読める形式でのエクスポート：
+
+- ✅ YAML + Markdown形式
+- ✅ 4種類のディレクトリ構造（フラット/ノートブック/日付/タグ）
+- ✅ 4種類のファイル名形式（GUID/タイトル/タイムスタンプ付き/複合）
+- ✅ メタデータインデックス（JSON）
+- ✅ 単一ノート・ノートブック・全体エクスポート
+
+詳細: [EXPORT_FORMAT.md](EXPORT_FORMAT.md)
 
 ### 次のステップ: Phase 2（未実装）
 
