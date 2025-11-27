@@ -28,7 +28,14 @@ module EnPrefetch
     attr_reader :dm, :sm, :stats
 
     def initialize(cache_dir = nil)
-      @cache_dir = cache_dir || File.expand_path("~/.evernote-mode")
+      cache_dir ||= File.expand_path("~/.evernote-mode")
+      @cache_dir = cache_dir
+      
+      # Override EnClient::DBManager constants if custom cache dir is specified
+      if cache_dir != File.expand_path("~/.evernote-mode")
+        override_db_paths(cache_dir)
+      end
+      
       @dm = EnClient::DBManager.new
       @sm = EnClient::SessionManager.new
       @stats = {
@@ -78,7 +85,9 @@ module EnPrefetch
     end
 
     # Fetch all missing note contents
-    def fetch_all_missing(dry_run: false, limit: nil)
+    def fetch_all_missing(options = {})
+      dry_run = options[:dry_run] || false
+      limit = options[:limit]
       missing = analyze_cache
       
       if missing.empty?
@@ -217,9 +226,8 @@ module EnPrefetch
       )
       
       # Set edit mode
-      full_note.editMode = EnClient::Formatter.get_edit_mode(
-        full_note.attributes&.sourceApplication
-      )
+      source_app = full_note.attributes ? full_note.attributes.sourceApplication : nil
+      full_note.editMode = EnClient::Formatter.get_edit_mode(source_app)
       
       # Format content based on edit mode
       content = format_content(full_note.content, full_note.editMode)
@@ -261,45 +269,55 @@ module EnPrefetch
       puts "  Failed: #{@stats[:failed]}"
       puts "  Skipped: #{@stats[:skipped]}"
     end
-
-    # Get all notes from database (helper method)
-    def self.get_all_notes(dm)
-      notes = []
-      dm.transaction do
-        dm.open_note do |db|
-          db.each_value do |value|
-            n = Evernote::EDAM::Type::Note.new
-            n.deserialize(value)
-            notes << n
-          end
-        end
-      end
-      notes
-    end
-  end
-
-  # Add helper to EnClient::DBUtils if not exists
-  module DBUtilsExtension
-    def self.get_all_notes(dm)
-      notes = []
-      dm.transaction do
-        dm.open_note do |db|
-          db.each_value do |value|
-            n = Evernote::EDAM::Type::Note.new
-            n.deserialize(value)
-            notes << n
-          end
-        end
-      end
-      notes
+    
+    private
+    
+    def override_db_paths(cache_dir)
+      # Remove trailing slash if present, then add it
+      cache_dir = cache_dir.chomp('/').chomp('\\') + '/'
+      
+      # Override DBManager constants
+      EnClient::DBManager.send(:remove_const, :ENMODE_SYS_DIR)
+      EnClient::DBManager.const_set(:ENMODE_SYS_DIR, cache_dir)
+      
+      EnClient::DBManager.send(:remove_const, :DB_LOCK)
+      EnClient::DBManager.const_set(:DB_LOCK, cache_dir + 'lock')
+      
+      EnClient::DBManager.send(:remove_const, :DB_SYNC)
+      EnClient::DBManager.const_set(:DB_SYNC, cache_dir + 'sync')
+      
+      EnClient::DBManager.send(:remove_const, :DB_NOTEBOOK)
+      EnClient::DBManager.const_set(:DB_NOTEBOOK, cache_dir + 'notebook')
+      
+      EnClient::DBManager.send(:remove_const, :DB_NOTE)
+      EnClient::DBManager.const_set(:DB_NOTE, cache_dir + 'note')
+      
+      EnClient::DBManager.send(:remove_const, :DB_TAG)
+      EnClient::DBManager.const_set(:DB_TAG, cache_dir + 'tag')
+      
+      EnClient::DBManager.send(:remove_const, :DB_SAVED_SEARCH)
+      EnClient::DBManager.const_set(:DB_SAVED_SEARCH, cache_dir + 'saved_search')
+      
+      EnClient::DBManager.send(:remove_const, :CONTENT_DIR)
+      EnClient::DBManager.const_set(:CONTENT_DIR, cache_dir + 'contents/')
     end
   end
 end
 
-# Extend EnClient::DBUtils
-module EnClient
-  module DBUtils
-    extend EnPrefetch::DBUtilsExtension
+# Extend EnClient::DBUtils with get_all_notes method
+class EnClient::DBUtils
+  def self.get_all_notes(dm)
+    notes = []
+    dm.transaction do
+      dm.open_note do |db|
+        db.each_value do |value|
+          n = Evernote::EDAM::Type::Note.new
+          n.deserialize(value)
+          notes << n
+        end
+      end
+    end
+    notes
   end
 end
 
@@ -364,8 +382,11 @@ if __FILE__ == $0
     exit 1
   end
 
-  unless options[:token]
-    puts "Error: Developer token required"
+  # Check if token is required for the command
+  requires_token = ['fetch-all', 'fetch-note'].include?(command)
+  
+  if requires_token && !options[:token]
+    puts "Error: Developer token required for '#{command}' command"
     puts "  Set EVERNOTE_TOKEN environment variable, or use --token option"
     puts
     puts "To get a developer token:"
@@ -377,7 +398,11 @@ if __FILE__ == $0
 
   begin
     prefetcher = EnPrefetch::Prefetcher.new(options[:cache_dir])
-    prefetcher.authenticate(options[:token])
+    
+    # Only authenticate if token is required
+    if requires_token
+      prefetcher.authenticate(options[:token])
+    end
 
     case command
     when 'analyze'
@@ -385,8 +410,8 @@ if __FILE__ == $0
 
     when 'fetch-all'
       prefetcher.fetch_all_missing(
-        dry_run: options[:dry_run],
-        limit: options[:limit]
+        :dry_run => options[:dry_run],
+        :limit => options[:limit]
       )
 
     when 'fetch-note'
