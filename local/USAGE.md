@@ -102,6 +102,49 @@ ruby local/bin/enlocal search "meeting"
 ruby local/bin/enlocal search "meeting" --limit 5
 ```
 
+### Export Notes
+
+```bash
+# Export a single note to Markdown
+ruby local/bin/enlocal export-note <NOTE_GUID> --output my-note.md
+
+# Export all notes in a notebook
+ruby local/bin/enlocal export-notebook <NOTEBOOK_GUID> --output notebook-export
+
+# Export all notes (flat structure)
+ruby local/bin/enlocal export-all --output all-notes
+
+# Export all notes organized by notebook
+ruby local/bin/enlocal export-all --output all-notes --structure notebook
+
+# Export with different filename formats
+ruby local/bin/enlocal export-all --output all-notes --filename title
+ruby local/bin/enlocal export-all --output all-notes --filename timestamp-title
+ruby local/bin/enlocal export-all --output all-notes --filename guid-title
+
+# Export with metadata index
+ruby local/bin/enlocal export-all --output all-notes --structure notebook --index
+
+# Export organized by date (YYYY/MM/)
+ruby local/bin/enlocal export-all --output all-notes --structure date
+
+# Export organized by tags
+ruby local/bin/enlocal export-all --output all-notes --structure tag
+```
+
+**Export Options:**
+- `--structure`: Directory organization
+  - `flat`: All files in one directory (default)
+  - `notebook`: Organize by notebook folders
+  - `date`: Organize by creation date (YYYY/MM/)
+  - `tag`: Organize by tags (one folder per tag)
+- `--filename`: Filename format
+  - `guid`: Use note GUID (default)
+  - `title`: Use note title
+  - `timestamp-title`: Use creation timestamp + title
+  - `guid-title`: Use GUID + title
+- `--index`: Create index.json with metadata
+
 ## Using Development Cache
 
 To use the development cache at `C:\gits\.evernote-mode`:
@@ -138,6 +181,41 @@ ruby local/bin/enlocal search "todo"
 
 # Show a specific note
 ruby local/bin/enlocal show-note <GUID_FROM_SEARCH>
+```
+
+### Export workflow
+
+```bash
+# 1. List notebooks to find what you want to export
+ruby local/bin/enlocal --cache-dir C:\gits\.evernote-mode list-notebooks
+
+# 2. Export a specific notebook with nice filenames
+ruby local/bin/enlocal --cache-dir C:\gits\.evernote-mode \
+  export-notebook <NOTEBOOK_GUID> \
+  --output my-notebook \
+  --filename timestamp-title
+
+# 3. Export everything organized by notebook
+ruby local/bin/enlocal --cache-dir C:\gits\.evernote-mode \
+  export-all \
+  --output complete-backup \
+  --structure notebook \
+  --filename timestamp-title \
+  --index
+```
+
+**Result structure:**
+```
+complete-backup/
+├── index.json
+├── Work/
+│   ├── 20250115_meeting-notes.md
+│   └── 20250120_project-plan.md
+├── Personal/
+│   ├── 20250110_shopping-list.md
+│   └── 20250118_recipe.md
+└── Archive/
+    └── 20240301_old-note.md
 ```
 
 ## Error Handling
