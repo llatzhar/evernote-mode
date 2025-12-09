@@ -595,8 +595,17 @@ module EnLocal
         data['notebook_guid'] = note.notebookGuid
       end
       
-      if note.tagNames && !note.tagNames.empty?
-        data['tags'] = note.tagNames
+      # Resolve tag names from GUIDs if tagNames is empty
+      tag_names = note.tagNames
+      if (!tag_names || tag_names.empty?) && note.tagGuids && !note.tagGuids.empty?
+        tag_names = note.tagGuids.map do |guid|
+          tag = @reader.get_tag(guid) rescue nil
+          tag ? tag.name : nil
+        end.compact
+      end
+      
+      if tag_names && !tag_names.empty?
+        data['tags'] = tag_names
       end
       
       if note.tagGuids && !note.tagGuids.empty?
@@ -700,6 +709,10 @@ module EnLocal
       when Array
         if value.empty?
           "#{key}: []"
+        elsif key == 'tags'
+          # Foam/Obsidian compatible inline array format for tags
+          escaped = value.map { |v| yaml_escape_inline(v) }
+          "#{key}: [#{escaped.join(', ')}]"
         else
           lines = ["#{key}:"]
           value.each { |v| lines << "  - #{yaml_escape(v)}" }
@@ -721,6 +734,15 @@ module EnLocal
 
     def yaml_escape(str)
       if str.match?(/[:\[\]{}&*!|>'"@`#%]/) || str.match?(/^\s/) || str.match?(/\s$/)
+        "\"#{str.gsub(/"/, '\"')}\""
+      else
+        str
+      end
+    end
+
+    # Escape for inline array format (tags: [tag1, tag2])
+    def yaml_escape_inline(str)
+      if str.match?(/[,\[\]{}&*!|>'"@`#%]/) || str.match?(/^\s/) || str.match?(/\s$/)
         "\"#{str.gsub(/"/, '\"')}\""
       else
         str

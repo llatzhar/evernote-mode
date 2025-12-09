@@ -26,13 +26,14 @@ ENMLやEDAM形式に依存しない、ヒューマンリーダブルなエクス
 ---
 title: ノートのタイトル
 guid: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-created: 2024-01-15T10:30:00+09:00
-updated: 2024-01-20T15:45:00+09:00
+created: "2024-01-15T10:30:00+09:00"
+updated: "2024-01-20T15:45:00+09:00"
 notebook: ノートブック名
 notebook_guid: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-tags:
-  - タグ1
-  - タグ2
+tags: [タグ1, タグ2, タグ3]
+tag_guids:
+  - xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  - xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 source: emacs
 author: ユーザー名
 edit_mode: TEXT
@@ -50,6 +51,16 @@ edit_mode: TEXT
 
 コードブロックなども表現可能。
 ```
+
+### Foam/Obsidian互換性
+
+`tags`フィールドは、VS Code拡張機能のFoamやObsidianと互換性のある
+インライン配列形式 `tags: [tag1, tag2]` で出力されます。
+
+これにより：
+- Foam Tag Explorerでタグが認識される
+- Obsidianのタグ機能と連携
+- 標準的なYAML配列として他ツールでも読み取り可能
 
 ### フィールド詳細
 
